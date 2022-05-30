@@ -1,20 +1,22 @@
 #version 330 core
 layout (location = 0) in vec3 VertexPosition;
-layout (location = 1) in vec3 VertexNormal;
-
-out vec4 Position;
-out vec3 Normal;
+//layout (location = 1) in vec3 VertexNormal;
 
 uniform float Time; //time of animation
 
 //Wave parameters (Mathematic equation)
-uniform float K; //Wavenumber -> replaces 2*pi/lamba
-uniform float A; //Amplitude
-uniform float V; //Velocity
+uniform float K = 25; //Wavenumber -> replaces 2*pi/lamba
+uniform float A = 06; //Amplitude
+uniform float V = 25; //Velocity
 
-uniform mat4 ModelViewMatrix;
-uniform mat3 NormalMatrix;
-uniform mat4 MVP; //Projection?
+uniform mat4 ModelViewMatrix; // represents model coordinates in the world coord space (*model*)
+//uniform mat3 NormalMatrix;
+uniform mat4 MVP; //represents the view and projection matrices combined (*viewProjection*)
+
+out vec4 Position;
+//out vec3 Normal;
+
+//uniform int hasNormal;
 
 void main(){
 
@@ -29,7 +31,8 @@ void main(){
 
 	//Send Position and Normal (in camera coords) to fragment shader
 	Position = ModelViewMatrix * pos;
-	Normal = NormalMatrix * n;
+	//if(hasNormal == 1)
+		//Normal = NormalMatrix * n;
 
 	//The position in clip coordinates
 	gl_Position = MVP * pos;
