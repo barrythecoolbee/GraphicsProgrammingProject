@@ -36,19 +36,10 @@ Shader* shader;
 Shader* phong_shading;
 Shader* pbr_shading;
 Shader* shadowMap_shader;
-Model* carBodyModel;
-Model* carPaintModel;
-Model* carInteriorModel;
-Model* carLightModel;
-Model* carWindowsModel;
-Model* carWheelModel;
+Shader* fountainShader;
 Model* floorModel;
-GLuint carBodyTexture;
-GLuint carPaintTexture;
-GLuint carLightTexture;
-GLuint carWindowsTexture;
-GLuint carWheelTexture;
 GLuint floorTexture;
+GLuint particleTexture;
 Camera camera(glm::vec3(0.0f, 1.6f, 5.0f));
 
 Shader* skyboxShader;
@@ -82,8 +73,9 @@ struct Light
     float radius;
 };
 
-// structure to hold config info
-// -------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------CONFIG------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
 struct Config
 {
     Config() : lights()
@@ -113,6 +105,14 @@ struct Config
 
     std::vector<Light> lights;
 
+    GLuint particleCount = 8000;
+
+    GLuint initVel, startTime, particles;
+
+    float Time;
+	glm::vec3 Gravity;
+    float ParticleLifeTime;
+
 } config;
 
 
@@ -127,10 +127,16 @@ void drawShadowMap();
 void drawObjects();
 void drawGui();
 unsigned int initSkyboxBuffers();
+void initParticlesBuffer();
 unsigned int loadCubemap(vector<std::string> faces);
 void createShadowMap();
 void setShadowUniforms();
+GLuint loadTexture(const std::string& fName);
 
+
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------MAIN------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
 int main()
 {
     // glfw: initialize and configure
@@ -173,15 +179,13 @@ int main()
     // ----------------------------------
     phong_shading = new Shader("shaders/common_shading.vert", "shaders/phong_shading.frag");
     pbr_shading = new Shader("shaders/common_shading.vert", "shaders/pbr_shading.frag");
+    fountainShader = new Shader("shaders/fountain.vert", "shaders/fountain.frag");
     shader = pbr_shading;
 
-    carBodyModel = new Model("car/Body_LOD0.obj");
-    carPaintModel = new Model("car/Paint_LOD0.obj");
-    carInteriorModel = new Model("car/Interior_LOD0.obj");
-    carLightModel = new Model("car/Light_LOD0.obj");
-    carWindowsModel = new Model("car/Windows_LOD0.obj");
-    carWheelModel = new Model("car/Wheel_LOD0.obj");
     floorModel = new Model("floor/floor.obj");
+    const char* textureName = "../../common/models/water/water.png";
+    glActiveTexture(GL_TEXTURE0);
+    particleTexture = loadTexture(textureName);
 
     // init skybox
     vector<std::string> faces
@@ -199,15 +203,27 @@ int main()
 
     createShadowMap();
     shadowMap_shader = new Shader("shaders/shadowmap.vert", "shaders/shadowmap.frag");
+	
+	// init particle system
+    //initParticlesBuffer();
+
 
     // set up the z-buffer
     // -------------------
-    glDepthRange(-1,1); // make the NDC a right handed coordinate system, with the camera pointing towards -z
-    glEnable(GL_DEPTH_TEST); // turn on z-buffer depth test
-    glDepthFunc(GL_LESS); // draws fragments that are closer to the screen in NDC
+    //glDepthRange(-1,1); // make the NDC a right handed coordinate system, with the camera pointing towards -z
+    //glEnable(GL_DEPTH_TEST); // turn on z-buffer depth test
+    //glDepthFunc(GL_LESS); // draws fragments that are closer to the screen in NDC
 
     // NEW! Enable SRGB framebuffer
-    glEnable(GL_FRAMEBUFFER_SRGB);
+    //glEnable(GL_FRAMEBUFFER_SRGB);
+
+	// enable alpha blending
+    glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	//set the point size
+	glPointSize(10.0f);
 
     // Dear IMGUI init
     // ---------------
@@ -244,10 +260,12 @@ int main()
         glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-
+        initParticlesBuffer();
+		
         drawSkybox();
 
         drawShadowMap();
+        //drawObjects();
 
         shader->use();
 
@@ -255,7 +273,6 @@ int main()
         setAmbientUniforms(config.ambientLightColor * config.ambientLightIntensity);
         setLightUniforms(config.lights[0]);
         setShadowUniforms();
-        drawObjects();
 
         // Additional additive lights
         setupForwardAdditionalPass();
@@ -280,15 +297,11 @@ int main()
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
 
-    delete carBodyModel;
-    delete carPaintModel;
-    delete carInteriorModel;
-    delete carLightModel;
-    delete carWindowsModel;
-    delete carWheelModel;
+    
     delete floorModel;
     delete phong_shading;
     delete pbr_shading;
+    delete fountainShader;
     delete shadowMap_shader;
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
@@ -297,7 +310,130 @@ int main()
     return 0;
 }
 
-void drawGui(){
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------FOUNTAIN----------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
+float randFloat() {
+    return ( (float) rand() / RAND_MAX);
+}
+
+void initParticlesBuffer() {
+	
+	// Generate the buffers
+	glGenBuffers(1, &config.initVel);
+	glGenBuffers(1, &config.startTime);
+
+	// Initialize the buffers
+	int size = config.particleCount * 3 * sizeof(float);
+	glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime);
+	glBufferData(GL_ARRAY_BUFFER, config.particleCount * sizeof(float), NULL, GL_STATIC_DRAW);
+	
+	//store initial velocity of each particle
+    glm::vec3 v(0.0f);
+    float velocity, theta, phi;
+	
+	GLfloat *data = new GLfloat[config.particleCount * 3];
+	
+	for(unsigned int i = 0; i < config.particleCount; i++) {
+		
+		//pick the direction of the velocity
+		theta = glm::mix(0.0f, glm::pi<float>() / 6.0f, randFloat());
+		phi = glm::mix(0.0f, glm::two_pi<float>() * 2.0f, randFloat());
+				
+		v.x = sinf(theta) * cosf(phi);
+        v.y = cosf(theta);
+		v.z = sinf(theta) * sinf(phi);
+
+		velocity = glm::mix(1.25f, 1.5f, randFloat());
+		v = glm::normalize(v) * velocity;
+		
+		data[i * 3] = v.x;
+		data[i * 3 + 1] = v.y;
+		data[i * 3 + 2] = v.z;
+	}
+	
+    glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, config.particleCount * 3 * sizeof(float), data);
+
+	//store the start time of each particle
+    delete[] data;
+	data = new GLfloat[config.particleCount];
+	float time = 0.0f, rate = 0.00075f;
+	
+	for(unsigned int i = 0; i < config.particleCount; i++) {
+		data[i] = time;
+		time += rate;
+	}
+	
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, config.particleCount * sizeof(float), data);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+	
+	delete[] data;
+	
+    glGenVertexArrays(1, &config.particles);
+	glBindVertexArray(config.particles);
+	
+	glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(0);
+	
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime);
+	glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(1);
+	
+	glBindVertexArray(0);
+}
+
+void drawObjects()
+{
+    // the typical transformation uniforms are already set for you, these are:
+    // projection (perspective projection matrix)
+    // view (to map world space coordinates to the camera space, so the camera position becomes the origin)
+    // model (for each model part we draw)
+
+    // camera parameters
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera.GetViewMatrix();
+    glm::mat4 viewProjection = projection * view;
+    glm::mat4 model = glm::mat4(1.0f);
+
+    glm::mat4 mv = view * model;
+    shader->setMat4("MVP", projection * mv);
+
+    // camera position
+    shader->setVec3("camPosition", camera.Position);
+    // set viewProjection matrix uniform
+    shader->setMat4("viewProjection", viewProjection);
+
+    // set up skybox texture
+    shader->setInt("skybox", 5);
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+
+    // draw floor
+    model = glm::scale(glm::mat4(1.0), glm::vec3(5.f, 5.f, 5.f));
+    shader->setMat4("model", model);
+    shader->setFloat("specularReflectance", 0.2f);
+    shader->setFloat("roughness", 0.95f);
+    floorModel->Draw(*shader);
+
+    //the particle texture
+    shader->setInt("ParticleTexture", 0);
+    shader->setFloat("ParticleLifetime", 3.5f);
+    shader->setVec3("Gravity", glm::vec3(0.0f, -0.2f, 0.0f));
+    shader->setFloat("Time", deltaTime);
+
+    glBindVertexArray(config.particles);
+    glDrawArrays(GL_POINTS, 0, config.particleCount);
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------GUI-------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
+void drawGui() {
     glDisable(GL_FRAMEBUFFER_SRGB);
 
     // Start the Dear ImGui frame
@@ -343,6 +479,7 @@ void drawGui(){
         {
             if (ImGui::RadioButton("Blinn-Phong Shading", shader == phong_shading)) { shader = phong_shading; }
             if (ImGui::RadioButton("PBR Shading", shader == pbr_shading)) { shader = pbr_shading; }
+            if (ImGui::RadioButton("Fountain Shading", shader == fountainShader)) { shader = fountainShader; }
         }
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
         ImGui::End();
@@ -354,61 +491,84 @@ void drawGui(){
     glEnable(GL_FRAMEBUFFER_SRGB);
 }
 
-void setAmbientUniforms(glm::vec3 ambientLightColor)
+
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------TEXTURES----------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
+// loads a cubemap texture from 6 individual texture faces
+// order:
+// +X (right)
+// -X (left)
+// +Y (top)
+// -Y (bottom)
+// +Z (front)
+// -Z (back)
+// -------------------------------------------------------
+unsigned int loadCubemap(vector<std::string> faces)
 {
-    // ambient uniforms
-    shader->setVec4("ambientLightColor", glm::vec4(ambientLightColor, glm::length(ambientLightColor) > 0.0f ? 1.0f : 0.0f));
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+    int width, height, nrComponents;
+    for (unsigned int i = 0; i < faces.size(); i++)
+    {
+        unsigned char* data = stbi_load(faces[i].c_str(), &width, &height, &nrComponents, 0);
+        if (data)
+        {
+            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_SRGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+            stbi_image_free(data);
+        }
+        else
+        {
+            std::cout << "Cubemap texture failed to load at path: " << faces[i] << std::endl;
+            stbi_image_free(data);
+        }
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+    return textureID;
 }
 
-void setLightUniforms(Light& light)
-{
-    glm::vec3 lightEnergy = light.color * light.intensity;
+GLuint loadTexture(const std::string& fName) {
+	
+    int width, height;
 
-    // TODO 8.3 : if we are using the PBR shader, multiply the lightEnergy by PI to match the color of the previous setup
-    if (shader == pbr_shading)
-    {
-        lightEnergy *= glm::pi<float>();
+    int bytesPerPix;
+	
+    stbi_set_flip_vertically_on_load(true);
+	
+    unsigned char* data = stbi_load(fName.c_str(), &width, &height, &bytesPerPix, 4);
+
+    if (data != nullptr) {
+        GLuint tex;
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+        stbi_image_free(data);
+        return tex;
     }
 
-    // light uniforms
-    shader->setVec3("lightPosition", light.position);
-    shader->setVec3("lightColor", lightEnergy);
-    shader->setFloat("lightRadius", light.radius);
+    return 0;
+	
 }
 
-void setupForwardAdditionalPass()
-{
-    // Remove ambient from additional passes
-    setAmbientUniforms(glm::vec3(0.0f));
-
-    // Enable additive blending
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ONE);
-
-    // Set depth test to GL_EQUAL (only the fragments that match the depth buffer are rendered)
-    glDepthFunc(GL_EQUAL);
-
-    // Disable shadowmap
-    glActiveTexture(GL_TEXTURE5);
-    glBindTexture(GL_TEXTURE_2D, 0);
-}
-
-
-void resetForwardAdditionalPass()
-{
-    // Restore ambient
-    setAmbientUniforms(config.ambientLightColor * config.ambientLightIntensity);
-
-    //Disable blend and restore default blend function
-    glDisable(GL_BLEND);
-    glBlendFunc(GL_ONE, GL_ZERO);
-
-    // Restore default depth test
-    glDepthFunc(GL_LESS);
-}
-
-
-
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------SKYBOX-----------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
 // init the VAO of the skybox
 // --------------------------
 unsigned int initSkyboxBuffers() {
@@ -474,51 +634,6 @@ unsigned int initSkyboxBuffers() {
     return skyboxVAO;
 }
 
-// loads a cubemap texture from 6 individual texture faces
-// order:
-// +X (right)
-// -X (left)
-// +Y (top)
-// -Y (bottom)
-// +Z (front)
-// -Z (back)
-// -------------------------------------------------------
-unsigned int loadCubemap(vector<std::string> faces)
-{
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
-
-    int width, height, nrComponents;
-    for (unsigned int i = 0; i < faces.size(); i++)
-    {
-        unsigned char* data = stbi_load(faces[i].c_str(), &width, &height, &nrComponents, 0);
-        if (data)
-        {
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_SRGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-            stbi_image_free(data);
-        }
-        else
-        {
-            std::cout << "Cubemap texture failed to load at path: " << faces[i] << std::endl;
-            stbi_image_free(data);
-        }
-    }
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
-
-    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-
-    return textureID;
-}
-
-
-
 void drawSkybox()
 {
     // render skybox
@@ -539,7 +654,9 @@ void drawSkybox()
     glDepthFunc(GL_LESS); // set depth function back to default
 }
 
-
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------SHADOW MAP----------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
 void createShadowMap()
 {
     // create depth texture
@@ -618,95 +735,65 @@ void setShadowUniforms()
     //shader->setFloat("shadowBias", config.shadowBias * 0.01f);
 }
 
-void drawObjects()
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------LIGHTS-----------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
+void setAmbientUniforms(glm::vec3 ambientLightColor)
 {
-    // the typical transformation uniforms are already set for you, these are:
-    // projection (perspective projection matrix)
-    // view (to map world space coordinates to the camera space, so the camera position becomes the origin)
-    // model (for each model part we draw)
-
-    // camera parameters
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-    glm::mat4 view = camera.GetViewMatrix();
-    glm::mat4 viewProjection = projection * view;
-
-    // camera position
-    shader->setVec3("camPosition", camera.Position);
-    // set viewProjection matrix uniform
-    shader->setMat4("viewProjection", viewProjection);
-
-    // set up skybox texture
-    shader->setInt("skybox", 5);
-    glActiveTexture(GL_TEXTURE5);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-
-    // material uniforms for car paint
-    shader->setVec3("reflectionColor", config.reflectionColor);
-    shader->setFloat("ambientReflectance", config.ambientReflectance);
-    shader->setFloat("diffuseReflectance", config.diffuseReflectance);
-    shader->setFloat("specularReflectance", config.specularReflectance);
-    shader->setFloat("specularExponent", config.specularExponent);
-    shader->setFloat("roughness", config.roughness);
-    shader->setFloat("metalness", config.metalness);
-
-    glm::mat4 model = glm::mat4(1.0f);
-    shader->setMat4("model", model);
-    carPaintModel->Draw(*shader);
-
-    // material uniforms for other car parts (hardcoded)
-    shader->setVec3("reflectionColor", 1.0f, 1.0f, 1.0f);
-    shader->setFloat("ambientReflectance", 0.75f);
-    shader->setFloat("diffuseReflectance", 0.75f);
-    shader->setFloat("specularReflectance", 0.5f);
-    shader->setFloat("specularExponent", 10.0f);
-    shader->setFloat("roughness", 0.5f);
-    shader->setFloat("metalness", 0.0f);
-
-    carBodyModel->Draw(*shader);
-
-    // draw car
-    shader->setMat4("model", model);
-    carLightModel->Draw(*shader);
-    carInteriorModel->Draw(*shader);
-
-    // draw wheel
-    model = glm::translate(glm::mat4(1.0f), glm::vec3(-.7432f, .328f, 1.39f));
-    shader->setMat4("model", model);
-    carWheelModel->Draw(*shader);
-
-    // draw wheel
-    model = glm::translate(glm::mat4(1.0f), glm::vec3(-.7432f, .328f, -1.39f));
-    shader->setMat4("model", model);
-    carWheelModel->Draw(*shader);
-
-    // draw wheel
-    model = glm::rotate(glm::mat4(1.0f), glm::pi<float>(), glm::vec3(0.0, 1.0, 0.0));
-    model = glm::translate(model, glm::vec3(-.7432f, .328f, 1.39f));
-    shader->setMat4("model", model);
-    carWheelModel->Draw(*shader);
-
-    // draw wheel
-    model = glm::rotate(glm::mat4(1.0f), glm::pi<float>(), glm::vec3(0.0, 1.0, 0.0));
-    model = glm::translate(model, glm::vec3(-.7432f, .328f, -1.39f));
-    shader->setMat4("model", model);
-    carWheelModel->Draw(*shader);
-
-    // draw floor
-    model = glm::scale(glm::mat4(1.0), glm::vec3(5.f, 5.f, 5.f));
-    shader->setMat4("model", model);
-    shader->setFloat("specularReflectance", 0.2f);
-    shader->setFloat("roughness", 0.95f);
-    floorModel->Draw(*shader);
-
-    shader->setFloat("specularReflectance", 1.0f);
-    shader->setFloat("specularExponent", 20.0f);
-    shader->setFloat("roughness", 0.25f);
-    model = glm::mat4(1.0f);
-    shader->setMat4("model", model);
-
-    carWindowsModel->Draw(*shader);
+    // ambient uniforms
+    shader->setVec4("ambientLightColor", glm::vec4(ambientLightColor, glm::length(ambientLightColor) > 0.0f ? 1.0f : 0.0f));
 }
 
+void setLightUniforms(Light& light)
+{
+    glm::vec3 lightEnergy = light.color * light.intensity;
+
+    // TODO 8.3 : if we are using the PBR shader, multiply the lightEnergy by PI to match the color of the previous setup
+    if (shader == pbr_shading)
+    {
+        lightEnergy *= glm::pi<float>();
+    }
+
+    // light uniforms
+    shader->setVec3("lightPosition", light.position);
+    shader->setVec3("lightColor", lightEnergy);
+    shader->setFloat("lightRadius", light.radius);
+}
+
+void setupForwardAdditionalPass()
+{
+    // Remove ambient from additional passes
+    setAmbientUniforms(glm::vec3(0.0f));
+
+    // Enable additive blending
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+
+    // Set depth test to GL_EQUAL (only the fragments that match the depth buffer are rendered)
+    glDepthFunc(GL_EQUAL);
+
+    // Disable shadowmap
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+
+void resetForwardAdditionalPass()
+{
+    // Restore ambient
+    setAmbientUniforms(config.ambientLightColor * config.ambientLightIntensity);
+
+    //Disable blend and restore default blend function
+    glDisable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ZERO);
+
+    // Restore default depth test
+    glDepthFunc(GL_LESS);
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------INPUT------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
 void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
