@@ -109,7 +109,7 @@ struct Config
 
     GLuint initVel, startTime, particles;
 
-    float Time;
+    float Time = 0.0f;
 	glm::vec3 Gravity;
     float ParticleLifeTime;
 
@@ -128,10 +128,10 @@ void drawObjects();
 void drawGui();
 unsigned int initSkyboxBuffers();
 void initParticlesBuffer();
+GLuint loadTexture(const std::string& fName);
 unsigned int loadCubemap(vector<std::string> faces);
 void createShadowMap();
 void setShadowUniforms();
-GLuint loadTexture(const std::string& fName);
 
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
@@ -174,16 +174,25 @@ int main()
         std::cout << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
+	
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+
+    // Enable blending
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Set the point size
+    glPointSize(10.0f);
 
     // load the shaders and the 3D models
     // ----------------------------------
     phong_shading = new Shader("shaders/common_shading.vert", "shaders/phong_shading.frag");
     pbr_shading = new Shader("shaders/common_shading.vert", "shaders/pbr_shading.frag");
     fountainShader = new Shader("shaders/fountain.vert", "shaders/fountain.frag");
-    shader = pbr_shading;
+    shader = fountainShader;
 
     floorModel = new Model("floor/floor.obj");
-    const char* textureName = "../../common/models/water/water.png";
+    const char* textureName = "../../common/models/water/bluewater.png";
     glActiveTexture(GL_TEXTURE0);
     particleTexture = loadTexture(textureName);
 
@@ -204,9 +213,6 @@ int main()
     createShadowMap();
     shadowMap_shader = new Shader("shaders/shadowmap.vert", "shaders/shadowmap.frag");
 	
-	// init particle system
-    //initParticlesBuffer();
-
 
     // set up the z-buffer
     // -------------------
@@ -218,12 +224,12 @@ int main()
     //glEnable(GL_FRAMEBUFFER_SRGB);
 
 	// enable alpha blending
-    glDisable(GL_DEPTH_TEST);
+    /*glDisable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	//set the point size
-	glPointSize(10.0f);
+	glPointSize(10.0f);*/
 
     // Dear IMGUI init
     // ---------------
@@ -243,30 +249,16 @@ int main()
         float currentFrame = (float)glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
-
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        glm::mat4 view = camera.GetViewMatrix();
-        glm::mat4 viewProjection = projection * view;
+        config.Time = deltaTime;
 
         processInput(window);
-
-        // Rotate light 2
-        if (lightRotationSpeed > 0.0f)
-        {
-            glm::vec4 rotatedLight = glm::rotate(glm::mat4(1.0f), lightRotationSpeed * deltaTime, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::vec4(config.lights[1].position, 1.0f);
-            config.lights[1].position = glm::vec3(rotatedLight.x, rotatedLight.y, rotatedLight.z);
-        }
 
         glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        drawShadowMap(); //POTENTIAL PROBLEM
+
         initParticlesBuffer();
-		
-        drawSkybox();
-
-        drawShadowMap();
-        //drawObjects();
-
         shader->use();
 
         // First light + ambient
@@ -280,30 +272,17 @@ int main()
         {
             setLightUniforms(config.lights[i]);
             drawObjects();
+            
         }
         resetForwardAdditionalPass();
-
-        if (isPaused) {
-            drawGui();
-        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    // Cleanup
-    // -------
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
 
-    
-    delete floorModel;
-    delete phong_shading;
-    delete pbr_shading;
     delete fountainShader;
-    delete shadowMap_shader;
-
+	
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
     glfwTerminate();
@@ -340,7 +319,7 @@ void initParticlesBuffer() {
 		
 		//pick the direction of the velocity
 		theta = glm::mix(0.0f, glm::pi<float>() / 6.0f, randFloat());
-		phi = glm::mix(0.0f, glm::two_pi<float>() * 2.0f, randFloat());
+		phi = glm::mix(0.0f, glm::two_pi<float>(), randFloat());
 				
 		v.x = sinf(theta) * cosf(phi);
         v.y = cosf(theta);
@@ -355,7 +334,7 @@ void initParticlesBuffer() {
 	}
 	
     glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, config.particleCount * 3 * sizeof(float), data);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
 
 	//store the start time of each particle
     delete[] data;
@@ -389,42 +368,22 @@ void initParticlesBuffer() {
 
 void drawObjects()
 {
-    // the typical transformation uniforms are already set for you, these are:
-    // projection (perspective projection matrix)
-    // view (to map world space coordinates to the camera space, so the camera position becomes the origin)
-    // model (for each model part we draw)
 
+    glClear(GL_COLOR_BUFFER_BIT);
     // camera parameters
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-    glm::mat4 view = camera.GetViewMatrix();
-    glm::mat4 viewProjection = projection * view;
+    glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
+    //glm::mat4 view = camera.GetViewMatrix();
+    glm::mat4 view = glm::lookAt(glm::vec3(3.0f * cos(glm::half_pi<float>()), 1.5f, 3.0f * sin(glm::half_pi<float>())), glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 model = glm::mat4(1.0f);
 
     glm::mat4 mv = view * model;
     shader->setMat4("MVP", projection * mv);
 
-    // camera position
-    shader->setVec3("camPosition", camera.Position);
-    // set viewProjection matrix uniform
-    shader->setMat4("viewProjection", viewProjection);
-
-    // set up skybox texture
-    shader->setInt("skybox", 5);
-    glActiveTexture(GL_TEXTURE5);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-
-    // draw floor
-    model = glm::scale(glm::mat4(1.0), glm::vec3(5.f, 5.f, 5.f));
-    shader->setMat4("model", model);
-    shader->setFloat("specularReflectance", 0.2f);
-    shader->setFloat("roughness", 0.95f);
-    floorModel->Draw(*shader);
-
     //the particle texture
     shader->setInt("ParticleTexture", 0);
     shader->setFloat("ParticleLifetime", 3.5f);
     shader->setVec3("Gravity", glm::vec3(0.0f, -0.2f, 0.0f));
-    shader->setFloat("Time", deltaTime);
+    shader->setFloat("Time", config.Time);
 
     glBindVertexArray(config.particles);
     glDrawArrays(GL_POINTS, 0, config.particleCount);
@@ -699,7 +658,7 @@ void drawShadowMap()
     glm::mat4 lightProjection = glm::ortho(-half, half, -half, half, near_plane, near_plane + shadowMapDepthRange);
     glm::mat4 lightView = glm::lookAt(glm::normalize(config.lights[0].position) * shadowMapDepthRange * 0.5f, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
     lightSpaceMatrix = lightProjection * lightView;
-    shader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
+    //shader->setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
     // setup framebuffer size
     int viewport[4];
