@@ -103,6 +103,10 @@ public:
     {
         glUseProgram(ID);
     }
+
+    GLuint getHandle() {
+        return ID;
+    }
     // utility uniform functions
     // ------------------------------------------------------------------------
     void setBool(const std::string &name, bool value) const

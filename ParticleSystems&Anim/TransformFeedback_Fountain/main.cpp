@@ -44,12 +44,21 @@ bool isPaused = false; // stop camera movement when GUI is open
 //-----------------------------------------------------------------------------------------------------------------------------------------
 struct Config
 {
-    GLuint particleCount = 8000;
+    GLuint particleCount = 4000;
 
-    GLuint initVel, startTime, particles;
+    GLuint initVel;
+
+    GLuint feedback[2];
+    GLuint posBuf[2];
+	GLuint velBuf[2];
+    GLuint startTime[2];
+    GLuint particleArray[2];
+
+    GLuint updateParticles;
+    GLuint drawBuf;
+    GLuint renderParticles;
 
     float Time = 0.0f;
-	glm::vec3 Gravity;
     float ParticleLifeTime;
 } config;
 
@@ -57,7 +66,6 @@ struct Config
 void drawObjects();
 void initParticlesBuffer();
 static GLuint loadTexture(const std::string& fName);
-static unsigned char* loadPixels(const std::string& fName, int& width, int& height);
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------MAIN------------------------------------------------------------------
@@ -100,43 +108,49 @@ int main()
         return -1;
     }
 	
+    fountainShader = new Shader("shaders/TF_fountain.vert", "shaders/TF_fountain.frag");
+    shader = fountainShader;   
+	
+    const char* outputNames[] = { "Position", "Velocity", "StartTime" };
+    glTransformFeedbackVaryings(shader->ID, 3, outputNames, GL_SEPARATE_ATTRIBS);
+	
+    // get subroutine indices
+    config.renderParticles = glGetSubroutineIndex(shader->ID, GL_VERTEX_SHADER, "render");
+    config.updateParticles = glGetSubroutineIndex(shader->ID, GL_VERTEX_SHADER, "update");
+	
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
+    // Set the point size
+    glPointSize(10.0f);
     // Enable blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Set the point size
-    glPointSize(10.0f);
-
-    fountainShader = new Shader("shaders/fountain.vert", "shaders/fountain.frag");
-    shader = fountainShader;   
-	
+    
     const char *textureName = "water/bluewater.png";
     glActiveTexture(GL_TEXTURE0);
     loadTexture(textureName);
-		
+    
     // render loop
-    // -----------
+    // -----------   
     while (!glfwWindowShouldClose(window))
     {
         static float lastFrame = 0.0f;
         float currentFrame = (float)glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
-        config.Time = deltaTime;
-
 
         processInput(window);
 
         initParticlesBuffer();
 		
         shader->use();
-
-        shader->setFloat("Time", currentFrame);
+        
+        shader->setFloat("Time", lastFrame);
+        shader->setFloat("H", deltaTime);
         shader->setSampler2D("ParticleTexture", 0);
         shader->setFloat("ParticleLifetime", 3.5f);
-        shader->setVec3("Gravity", glm::vec3(0.0f, -0.2f, 0.0f));
+        shader->setVec3("Accel", glm::vec3(0.0f, -0.4f, 0.0f));
         drawObjects();
 
         glfwSwapBuffers(window);
@@ -159,79 +173,169 @@ float randFloat() {
 void initParticlesBuffer() {
 	
 	// Generate the buffers
+	glGenBuffers(2, config.posBuf);
+	glGenBuffers(2, config.velBuf);
+	glGenBuffers(2, config.startTime);
 	glGenBuffers(1, &config.initVel);
-	glGenBuffers(1, &config.startTime);
 
 	// Initialize the buffers
 	int size = config.particleCount * 3 * sizeof(float);
+	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[0]); //buffer A
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
+	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[1]); //buffer B
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
+	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[0]);
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
+	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[1]);
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
 	glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
 	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_STATIC_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, config.startTime);
-	glBufferData(GL_ARRAY_BUFFER, config.particleCount * sizeof(float), NULL, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[0]);
+	glBufferData(GL_ARRAY_BUFFER, config.particleCount * sizeof(float), NULL, GL_DYNAMIC_COPY);
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[1]);
+	glBufferData(GL_ARRAY_BUFFER, config.particleCount * sizeof(float), NULL, GL_DYNAMIC_COPY);
 	
-	//store initial velocity of each particle
-    glm::vec3 v(0.0f);
-    float velocity, theta, phi;
-	
+	//Fill the first position buffer with zeros
 	GLfloat *data = new GLfloat[config.particleCount * 3];
-	
-	for(unsigned int i = 0; i < config.particleCount; i++) {
-		
-		//pick the direction of the velocity
-		theta = glm::mix(0.0f, glm::pi<float>() / 6.0f, randFloat());
-		phi = glm::mix(0.0f, glm::two_pi<float>(), randFloat());
-				
-		v.x = sinf(theta) * cosf(phi);
-        v.y = cosf(theta);
-		v.z = sinf(theta) * sinf(phi);
-
-		velocity = glm::mix(1.25f, 1.5f, randFloat());
-		v = glm::normalize(v) * velocity;
-		
-		data[i * 3] = v.x;
-		data[i * 3 + 1] = v.y;
-		data[i * 3 + 2] = v.z;
+	for (int i = 0; i < config.particleCount * 3; i++) {
+		data[i] = 0.0f;
 	}
+	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[0]);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
+	
+    //Fill the first velocity buffer with random numbers
+    glm::vec3 v(0.0f);
+    float velocity, theta, phi; 
+	
+    for (int i = 0; i < config.particleCount; i++) {
+
+        //pick the direction of the velocity
+        theta = glm::mix(0.0f, glm::pi<float>() / 6.0f, randFloat());
+        phi = glm::mix(0.0f, glm::two_pi<float>(), randFloat());
+
+        v.x = sinf(theta) * cosf(phi);
+        v.y = cosf(theta);
+        v.z = sinf(theta) * sinf(phi);
+
+        velocity = glm::mix(1.25f, 1.5f, randFloat());
+        v = glm::normalize(v) * velocity;
+
+        data[i * 3] = v.x;
+        data[i * 3 + 1] = v.y;
+        data[i * 3 + 2] = v.z;
+    }
+	
+	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[0]);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);	
 	
     glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
     glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
 
-	//store the start time of each particle
+	//fill the first start time buffer
     delete[] data;
 	data = new GLfloat[config.particleCount];
-	float time = 0.0f, rate = 0.00075f;
+	float time = 0.0f, rate = 0.001f;
 	
-	for(unsigned int i = 0; i < config.particleCount; i++) {
+	for(int i = 0; i < config.particleCount; i++) {
 		data[i] = time;
 		time += rate;
 	}
 	
-	glBindBuffer(GL_ARRAY_BUFFER, config.startTime);
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[0]);
 	glBufferSubData(GL_ARRAY_BUFFER, 0, config.particleCount * sizeof(float), data);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 	
 	delete[] data;
+
+	//create vertex arrays for each set of buffers
+	glGenVertexArrays(2, config.particleArray);
 	
-    glGenVertexArrays(1, &config.particles);
-	glBindVertexArray(config.particles);
-	
-	glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
+	//Set up particle array 0
+	glBindVertexArray(config.particleArray[0]);
+	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[0]);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(0);
+
+	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[0]);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(1);
+
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[0]);
+	glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(2);
 	
-	glBindBuffer(GL_ARRAY_BUFFER, config.startTime);
-	glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 0, NULL);
+    glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+    glEnableVertexAttribArray(3);
+
+	//Set up particle array 1
+	glBindVertexArray(config.particleArray[1]);
+	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[1]);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(0);
+
+	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[1]);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(1);
 	
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[1]);
+	glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(2);
+	
+	glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
+	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+	glEnableVertexAttribArray(3);
+	
 	glBindVertexArray(0);
+
+	//Setup the feedback objects
+    glGenTransformFeedbacks(2, config.feedback);
+
+    //Transform feedback 0
+    glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, config.feedback[0]);
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, config.posBuf[0]);
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 1, config.velBuf[0]);
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 2, config.startTime[0]);
+
+    //Transform feedback 1
+    glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, config.feedback[1]);
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, config.posBuf[1]);
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 1, config.velBuf[1]);
+    glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 2, config.startTime[1]);
+
+    glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, 0);
+
+    GLint value;
+    glGetIntegerv(GL_MAX_TRANSFORM_FEEDBACK_BUFFERS, &value);
+    printf("MAX_TRANSFORM_FEEDBACK_BUFFERS = %d\n", value);
 }
 
 void drawObjects()
 {
 
-    glClear(GL_COLOR_BUFFER_BIT);
+    //Select the subroutine for particle updating
+    glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &config.updateParticles);
+
+	//Disable rendering
+	glEnable(GL_RASTERIZER_DISCARD);
+
+	//Bind the feedback obj. for the buffers to be drawn
+	glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, config.feedback[config.drawBuf]);
+
+	//Draw points from input buffer with transform feedback
+    glBeginTransformFeedback(GL_POINTS);
+	glBindVertexArray(config.particleArray[1 - config.drawBuf]);
+	glDrawArrays(GL_POINTS, 0, config.particleCount);
+	glEndTransformFeedback();
+
+	//Enable rendering
+	glDisable(GL_RASTERIZER_DISCARD);
 	
-    // camera parameters
+	//Select the subroutine for particle rendering
+	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &config.renderParticles);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	// camera parameters
     glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
     glm::mat4 view = glm::lookAt(glm::vec3(3.0f * cos(glm::half_pi<float>()), 1.5f, 3.0f * sin(glm::half_pi<float>())), glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 model = glm::mat4(1.0f);
@@ -239,8 +343,12 @@ void drawObjects()
     glm::mat4 mv = view * model;
     shader->setMat4("MVP", projection * mv);
 
-    glBindVertexArray(config.particles);
-    glDrawArrays(GL_POINTS, 0, config.particleCount);
+	//Draw the sprites from the feedback buffer
+	glBindVertexArray(config.particleArray[config.drawBuf]);
+	glDrawTransformFeedback(GL_POINTS, config.feedback[config.drawBuf]);
+
+	//Swap buffers
+	config.drawBuf = 1 - config.drawBuf;
 }
 
 GLuint loadTexture(const std::string& fName) {
