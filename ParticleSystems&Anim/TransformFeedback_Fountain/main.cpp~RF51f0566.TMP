@@ -136,7 +136,7 @@ int main()
         shader->setFloat("Time", currentFrame);
         shader->setSampler2D("ParticleTexture", 0);
         shader->setFloat("ParticleLifetime", 3.5f);
-        shader->setVec3("Gravity", glm::vec3(0.0f, -0.2f, 0.0f));
+        shader->setVec3("Gravity", glm::vec3(0.0f, -0.3f, 0.0f));
         drawObjects();
 
         glfwSwapBuffers(window);
@@ -254,7 +254,7 @@ GLuint loadTexture(const std::string& fName) {
     if (data)
     {
         glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
