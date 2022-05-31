@@ -140,7 +140,7 @@ int main()
         float currentFrame = (float)glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
-
+        shader->setFloat("Time", currentFrame);
         processInput(window);
 
         glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
@@ -172,10 +172,6 @@ int main()
     glfwTerminate();
     return 0;
 }
-
-
-
-
 
 
 void drawGui() {
@@ -218,28 +214,25 @@ void drawObjects() {
 
 	// camera position
     shader->setVec3("camPosition", camera.Position);
-    shader->setFloat("Time", deltaTime);
+    
     shader->setVec3("ambientReflectance", config.ambientReflectance);
     shader->setVec3("diffuseReflectance", config.diffuseReflectance);
     shader->setVec3("specularReflectance", config.specularReflectance);
     shader->setFloat("specularExponent", config.specularExponent);
 
     // camera parameters
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
-    glm::mat4 view = camera.GetViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
+    glm::mat4 view = glm::lookAt(glm::vec3(3.0f * cos(glm::half_pi<float>()), 1.5f, 3.0f * sin(glm::half_pi<float>())), glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 model = glm::mat4(1.0);
 	glm::mat4 mv = view * model;
 	glm::mat4 mvp = projection * view * model;
 
 	// draw the floor
-	model = glm::scale(model, glm::vec3(10.0f, 10.0f, 10.0f));
-	shader->setMat4("ModelViewMatrix", model);
-	//shader->setMat3("NormalMatrix", glm::mat3(glm::vec3(model[0]), glm::vec3(model[1]), glm::vec3(model[2])));
+	shader->setMat4("ModelViewMatrix", mv);
+	shader->setMat3("NormalMatrix", glm::mat3(glm::vec3(mv[0]), glm::vec3(mv[1]), glm::vec3(mv[2])));
 	shader->setMat4("MVP", mvp);
 
-	// draw a quad
     floorModel->Draw(*shader);
-    //drawQuad();
 }
 
 void drawQuad()
