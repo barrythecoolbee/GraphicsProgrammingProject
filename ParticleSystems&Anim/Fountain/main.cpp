@@ -29,7 +29,6 @@ const unsigned int SCR_HEIGHT = 720;
 // -----------------------------------
 Shader* shader;
 Shader* fountainShader;
-GLuint particleTexture;
 Camera camera(glm::vec3(0.0f, 1.6f, 5.0f));
 
 // global variables used for control
@@ -55,11 +54,10 @@ struct Config
 } config;
 
 
-
 void drawObjects();
-void drawGui();
 void initParticlesBuffer();
-GLuint loadTexture(const std::string& fName);
+static GLuint loadTexture(const std::string& fName);
+static unsigned char* loadPixels(const std::string& fName, int& width, int& height);
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------MAIN------------------------------------------------------------------
@@ -113,9 +111,11 @@ int main()
 
     fountainShader = new Shader("shaders/fountain.vert", "shaders/fountain.frag");
     shader = fountainShader;   
-    const char* textureName = "bluewater.png";
+	
+    const char *textureName = "water/bluewater.png";
     glActiveTexture(GL_TEXTURE0);
-    particleTexture = loadTexture(textureName);
+    loadTexture(textureName);
+		
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -130,12 +130,13 @@ int main()
         processInput(window);
 
         initParticlesBuffer();
+		
         shader->use();
 
         shader->setFloat("Time", currentFrame);
         shader->setSampler2D("ParticleTexture", 0);
         shader->setFloat("ParticleLifetime", 3.5f);
-        shader->setVec3("Gravity", glm::vec3(0.0f, -0.2f, 0.0f));
+        shader->setVec3("Gravity", glm::vec3(0.0f, -0.3f, 0.0f));
         drawObjects();
 
         glfwSwapBuffers(window);
@@ -243,31 +244,33 @@ void drawObjects()
 }
 
 GLuint loadTexture(const std::string& fName) {
-	
-    int width, height;
+    string filename = fName;
 
-    int bytesPerPix;
-	
-    stbi_set_flip_vertically_on_load(true);
-	
-    unsigned char* data = stbi_load(fName.c_str(), &width, &height, &bytesPerPix, 4);
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
 
-    if (data != nullptr) {
-        GLuint tex;
-        glGenTextures(1, &tex);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, width, height);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, data);
+    int width, height, nrComponents;
+    unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
+    if (data)
+    {
+        glBindTexture(GL_TEXTURE_2D, textureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB_ALPHA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
 
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
         stbi_image_free(data);
-        return tex;
+    }
+    else
+    {
+        std::cout << "Texture failed to load at path: " << fName << std::endl;
+        stbi_image_free(data);
     }
 
-    return 0;
-	
+    return textureID;
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
