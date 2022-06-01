@@ -86,7 +86,7 @@ int main()
 
     // glfw window creation
     // --------------------
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Fountain", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Fire", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -109,7 +109,7 @@ int main()
         return -1;
     }
 	
-    fountainShader = new Shader("shaders/TF_fountain.vert", "shaders/TF_fountain.frag");
+    fountainShader = new Shader("shaders/fire.vert", "shaders/fire.frag");
     shader = fountainShader;   
 	
     const char* outputNames[] = { "Position", "Velocity", "StartTime" };
@@ -122,12 +122,12 @@ int main()
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
     // Set the point size
-    glPointSize(10.0f);
+    glPointSize(50.0f); //size of texture/particle
     // Enable blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    const char *textureName = "water/bluewater.png";
+    const char *textureName = "fire/fire.png";
     glActiveTexture(GL_TEXTURE0);
     loadTexture(textureName);
 	
@@ -193,10 +193,12 @@ void initParticlesBuffer() {
 	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[1]);
 	glBufferData(GL_ARRAY_BUFFER, config.particleCount * sizeof(float), NULL, GL_DYNAMIC_COPY);
 	
-	//Fill the first position buffer with zeros
+	//Instead of using the origin for all particles, use a random x location
 	GLfloat *data = new GLfloat[config.particleCount * 3];
-	for (int i = 0; i < config.particleCount * 3; i++) {
-		data[i] = 0.0f;
+	for (int i = 0; i < config.particleCount * 3; i+=3) {
+        data[i] = glm::mix(-2.0f, 2.0f, randFloat());
+        data[i + 1] = 0.0f;
+        data[i + 2] = 0.0f;
 	}
 	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[0]);
 	glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
@@ -205,18 +207,8 @@ void initParticlesBuffer() {
     glm::vec3 v(0.0f);
     float velocity, theta, phi; 
 	
+	//x and z components are zero and the y component contains a random speed
     for (int i = 0; i < config.particleCount; i++) {
-
-        //pick the direction of the velocity
-        theta = glm::mix(0.0f, glm::pi<float>() / 6.0f, randFloat());
-        phi = glm::mix(0.0f, glm::two_pi<float>(), randFloat());
-
-        v.x = sinf(theta) * cosf(phi);
-        v.y = cosf(theta);
-        v.z = sinf(theta) * sinf(phi);
-
-        velocity = glm::mix(1.25f, 1.5f, randFloat());
-        v = glm::normalize(v) * velocity;
 
         data[i * 3] = v.x;
         data[i * 3 + 1] = v.y;
@@ -311,8 +303,8 @@ void drawObjects()
     glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &config.updateParticles);
 
     shader->setSampler2D("ParticleTexture", 0);
-    shader->setFloat("ParticleLifetime", 3.5f);
-    shader->setVec3("Accel", glm::vec3(0.0f, -0.6f, 0.0f));
+    shader->setFloat("ParticleLifetime", 4.0f);
+    shader->setVec3("Accel", glm::vec3(0.0f, 0.1f, 0.0f));
     shader->setFloat("Time", config.Time);
     shader->setFloat("H", config.H);
 	

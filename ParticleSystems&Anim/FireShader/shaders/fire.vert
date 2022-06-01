@@ -30,9 +30,10 @@ void update(){
 	if(Time >= StartTime){
 		float t = Time - StartTime; //Time since start (age)
 		
+		//Reset the y and z coordinates but dont change x
 		if(t > ParticleLifetime){
 			//Particle is dead, recycle
-			Position = vec3(0.0);
+			Position = vec3(VertexPosition.x, 0.0, 0.0);
 			Velocity = VertexInitialVelocity;
 			StartTime = Time;
 		} else {
