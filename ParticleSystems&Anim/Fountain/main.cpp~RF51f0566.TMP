@@ -57,6 +57,7 @@ struct Config
 void drawObjects();
 void initParticlesBuffer();
 static GLuint loadTexture(const std::string& fName);
+static unsigned char* loadPixels(const std::string& fName, int& width, int& height);
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------MAIN------------------------------------------------------------------
@@ -66,7 +67,7 @@ int main()
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
@@ -115,7 +116,6 @@ int main()
     glActiveTexture(GL_TEXTURE0);
     loadTexture(textureName);
 		
-    initParticlesBuffer();
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -124,13 +124,19 @@ int main()
         float currentFrame = (float)glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
+        config.Time = deltaTime;
 
-        config.Time = currentFrame;
 
         processInput(window);
 
-        shader->use();
+        initParticlesBuffer();
 		
+        shader->use();
+
+        shader->setFloat("Time", currentFrame);
+        shader->setSampler2D("ParticleTexture", 0);
+        shader->setFloat("ParticleLifetime", 3.5f);
+        shader->setVec3("Gravity", glm::vec3(0.0f, -0.3f, 0.0f));
         drawObjects();
 
         glfwSwapBuffers(window);
@@ -225,11 +231,6 @@ void drawObjects()
 
     glClear(GL_COLOR_BUFFER_BIT);
 	
-    shader->setFloat("Time", config.Time);
-    shader->setSampler2D("ParticleTexture", 0);
-    shader->setFloat("ParticleLifetime", 3.5f);
-    shader->setVec3("Gravity", glm::vec3(0.0f, -0.3f, 0.0f));
-	
     // camera parameters
     glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
     glm::mat4 view = glm::lookAt(glm::vec3(3.0f * cos(glm::half_pi<float>()), 1.5f, 3.0f * sin(glm::half_pi<float>())), glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -253,7 +254,7 @@ GLuint loadTexture(const std::string& fName) {
     if (data)
     {
         glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
         glGenerateMipmap(GL_TEXTURE_2D);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);

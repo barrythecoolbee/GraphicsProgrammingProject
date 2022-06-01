@@ -14,9 +14,6 @@
 // function declarations
 // ---------------------
 void drawObjects();
-void setLightUniforms();
-void drawGui();
-void drawQuad();
 
 // glfw and input functions
 // ------------------------
@@ -45,19 +42,9 @@ float lastY = (float)SCR_HEIGHT / 2.0;
 float deltaTime;
 bool isPaused = false; // stop camera movement when GUI is open
 
-
-
-
-
 // structure to hold lighting info
 // -------------------------------
 struct Config {
-
-    // ambient light
-    glm::vec3 ambientLightColor = { 1.0f, 1.0f, 1.0f };
-    glm::vec3 ambientLightIntensity = { 1.0f, 1.0f, 1.0f };
-	glm::vec4 ambientLightPosition = { -0.8f, 2.4f, 0.0f, 1.0f };
-
     // material
     glm::vec3 ambientReflectance = { 0.2f, 0.2f, 0.2f };
     glm::vec3 diffuseReflectance = { 0.9f, 0.5f, 0.3f };
@@ -75,7 +62,7 @@ int main()
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
@@ -110,26 +97,15 @@ int main()
 
     // load the shaders and the 3D models
     // ----------------------------------
+    floorModel = new Model("floor/floor.obj");
     wave_shading = new Shader("shaders/wave.vert", "shaders/wave.frag");
     shader = wave_shading;
-    floorModel = new Model("floor/floor.obj");
 
     // set up the z-buffer
     // -------------------
     glDepthRange(-1, 1); // make the NDC a right handed coordinate system, with the camera pointing towards -z
     glEnable(GL_DEPTH_TEST); // turn on z-buffer depth test
     glDepthFunc(GL_LESS); // draws fragments that are closer to the screen in NDC
-
-
-    // Dear IMGUI init
-    // ---------------
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-    // Setup Platform/Renderer bindings
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 330 core");
 
 
     // render loop
@@ -141,31 +117,20 @@ int main()
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
+        shader->setFloat("Time", currentFrame);		
+		
         processInput(window);
 
         glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         shader->use();
-        setLightUniforms();
-        drawObjects();
 
-        if (isPaused) {
-            drawGui();
-        }
+        drawObjects();
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
-    // Cleanup
-    // -------
-    ImGui_ImplOpenGL3_Shutdown();
-    ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
-	
-    delete floorModel;
-    delete wave_shading;
 
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
@@ -173,99 +138,21 @@ int main()
     return 0;
 }
 
-
-
-
-
-
-void drawGui() {
-    // NEW! we are using the header library Dear ImGui to set the variables in a graphical interface
-    //  here is where we define the buttons and how they map to the variables in our program
-
-    // Start the Dear ImGui frame
-    ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplGlfw_NewFrame();
-    ImGui::NewFrame();
-
-    {
-        ImGui::Begin("Settings");
-
-        ImGui::Text("Ambient light: ");
-        ImGui::ColorEdit3("ambient light color", (float*)&config.ambientLightColor);
-        ImGui::Separator();
-		
-        ImGui::Text("Material: ");
-        ImGui::SliderFloat("specular exponent", &config.specularExponent, 0.0f, 100.0f);
-        ImGui::Separator();
-
-        ImGui::Text("Shading model: ");
-        {
-            if (ImGui::RadioButton("Wave", shader == wave_shading)) { shader = wave_shading; }
-        }
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        ImGui::End();
-    }
-
-    ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-}
-
-void setLightUniforms() {
-    shader->setVec3("LightIntensity", config.ambientLightColor * config.ambientLightIntensity);
-    shader->setVec4("LightPosition", config.ambientLightPosition);
-}
 void drawObjects() {
 
-	// camera position
-    shader->setVec3("camPosition", camera.Position);
-    shader->setFloat("Time", deltaTime);
-    shader->setVec3("ambientReflectance", config.ambientReflectance);
-    shader->setVec3("diffuseReflectance", config.diffuseReflectance);
-    shader->setVec3("specularReflectance", config.specularReflectance);
-    shader->setFloat("specularExponent", config.specularExponent);
-
     // camera parameters
-    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
-    glm::mat4 view = camera.GetViewMatrix();
+    glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
+    glm::mat4 view = glm::lookAt(glm::vec3(3.0f * cos(glm::half_pi<float>()), 1.5f, 3.0f * sin(glm::half_pi<float>())), glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 model = glm::mat4(1.0);
 	glm::mat4 mv = view * model;
 	glm::mat4 mvp = projection * view * model;
 
 	// draw the floor
-	model = glm::scale(model, glm::vec3(10.0f, 10.0f, 10.0f));
-	shader->setMat4("ModelViewMatrix", model);
-	//shader->setMat3("NormalMatrix", glm::mat3(glm::vec3(model[0]), glm::vec3(model[1]), glm::vec3(model[2])));
+	shader->setMat4("ModelViewMatrix", mv);
+	shader->setMat3("NormalMatrix", glm::mat3(glm::vec3(mv[0]), glm::vec3(mv[1]), glm::vec3(mv[2])));
 	shader->setMat4("MVP", mvp);
 
-	// draw a quad
     floorModel->Draw(*shader);
-    //drawQuad();
-}
-
-void drawQuad()
-{
-    static unsigned int quadVAO = 0, quadVBO;
-    if (quadVAO == 0)
-    {
-        float quadVertices[] = {
-            // positions        // texture Coords
-            -1.0f, -1.0f, 0.0f,
-            -1.0f,  1.0f, 0.0f, 
-            1.0f, -1.0f, 0.0f, 
-            1.0f,  1.0f, 0.0f,
-        };
-        // setup plane VAO
-        glGenVertexArrays(1, &quadVAO);
-        glGenBuffers(1, &quadVBO);
-        glBindVertexArray(quadVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    }
-    glBindVertexArray(quadVAO);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
 }
 
 
