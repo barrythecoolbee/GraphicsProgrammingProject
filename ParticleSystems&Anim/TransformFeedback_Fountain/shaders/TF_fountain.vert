@@ -1,4 +1,4 @@
-#version 400 core
+#version 440 core
 subroutine void RenderPassType();
 subroutine uniform RenderPassType RenderPass;
 
@@ -8,9 +8,9 @@ layout (location = 2) in float VertexStartTime;
 layout (location = 3) in vec3 VertexInitialVelocity;
 
 out float Transp; //Transparency of the particle
-out vec3 Position; //Position of the particle to tranform feedback
-out vec3 Velocity; //Velocity of the particle to tranform feedback
-out float StartTime; //Start time of the particle to tranform feedback
+layout( xfb_buffer = 0, xfb_offset=0 ) out vec3 Position; //Position of the particle to tranform feedback
+layout( xfb_buffer = 1, xfb_offset=0 ) out vec3 Velocity; //Velocity of the particle to tranform feedback
+layout( xfb_buffer = 2, xfb_offset=0 ) out float StartTime; //Start time of the particle to tranform feedback
 
 uniform float Time; //Animation time
 uniform float H; //Elapsed time between frames
@@ -31,8 +31,8 @@ void update(){
 		float t = Time - StartTime; //Time since start (age)
 		
 		if(t > ParticleLifetime){
-			//Particle is dead
-			Position = vec3(0.0, 0.0, 0.0);
+			//Particle is dead, recycle
+			Position = vec3(0.0);
 			Velocity = VertexInitialVelocity;
 			StartTime = Time;
 		} else {

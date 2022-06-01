@@ -57,7 +57,6 @@ struct Config
 void drawObjects();
 void initParticlesBuffer();
 static GLuint loadTexture(const std::string& fName);
-static unsigned char* loadPixels(const std::string& fName, int& width, int& height);
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------MAIN------------------------------------------------------------------
@@ -67,7 +66,7 @@ int main()
     // glfw: initialize and configure
     // ------------------------------
     glfwInit();
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
@@ -116,6 +115,7 @@ int main()
     glActiveTexture(GL_TEXTURE0);
     loadTexture(textureName);
 		
+    initParticlesBuffer();
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -124,19 +124,13 @@ int main()
         float currentFrame = (float)glfwGetTime();
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
-        config.Time = deltaTime;
 
+        config.Time = currentFrame;
 
         processInput(window);
 
-        initParticlesBuffer();
-		
         shader->use();
-
-        shader->setFloat("Time", currentFrame);
-        shader->setSampler2D("ParticleTexture", 0);
-        shader->setFloat("ParticleLifetime", 3.5f);
-        shader->setVec3("Gravity", glm::vec3(0.0f, -0.2f, 0.0f));
+		
         drawObjects();
 
         glfwSwapBuffers(window);
@@ -230,6 +224,11 @@ void drawObjects()
 {
 
     glClear(GL_COLOR_BUFFER_BIT);
+	
+    shader->setFloat("Time", config.Time);
+    shader->setSampler2D("ParticleTexture", 0);
+    shader->setFloat("ParticleLifetime", 3.5f);
+    shader->setVec3("Gravity", glm::vec3(0.0f, -0.2f, 0.0f));
 	
     // camera parameters
     glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);

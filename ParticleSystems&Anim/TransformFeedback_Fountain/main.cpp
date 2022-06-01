@@ -59,6 +59,7 @@ struct Config
     GLuint renderParticles;
 
     float Time = 0.0f;
+    float H = 0.0f;
     float ParticleLifeTime;
 } config;
 
@@ -76,7 +77,7 @@ int main()
     // ------------------------------
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 4);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 #ifdef __APPLE__
@@ -113,7 +114,7 @@ int main()
 	
     const char* outputNames[] = { "Position", "Velocity", "StartTime" };
     glTransformFeedbackVaryings(shader->ID, 3, outputNames, GL_SEPARATE_ATTRIBS);
-	
+
     // get subroutine indices
     config.renderParticles = glGetSubroutineIndex(shader->ID, GL_VERTEX_SHADER, "render");
     config.updateParticles = glGetSubroutineIndex(shader->ID, GL_VERTEX_SHADER, "update");
@@ -126,10 +127,11 @@ int main()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    
     const char *textureName = "water/bluewater.png";
     glActiveTexture(GL_TEXTURE0);
     loadTexture(textureName);
+	
+    initParticlesBuffer();
     
     // render loop
     // -----------   
@@ -140,17 +142,13 @@ int main()
         deltaTime = currentFrame - lastFrame;
         lastFrame = currentFrame;
 
-        processInput(window);
+        config.Time = currentFrame;
+		config.H = deltaTime;
 
-        initParticlesBuffer();
-		
+        processInput(window);
+        		
         shader->use();
         
-        shader->setFloat("Time", lastFrame);
-        shader->setFloat("H", deltaTime);
-        shader->setSampler2D("ParticleTexture", 0);
-        shader->setFloat("ParticleLifetime", 3.5f);
-        shader->setVec3("Accel", glm::vec3(0.0f, -0.4f, 0.0f));
         drawObjects();
 
         glfwSwapBuffers(window);
@@ -304,10 +302,6 @@ void initParticlesBuffer() {
     glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 2, config.startTime[1]);
 
     glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, 0);
-
-    GLint value;
-    glGetIntegerv(GL_MAX_TRANSFORM_FEEDBACK_BUFFERS, &value);
-    printf("MAX_TRANSFORM_FEEDBACK_BUFFERS = %d\n", value);
 }
 
 void drawObjects()
@@ -316,6 +310,12 @@ void drawObjects()
     //Select the subroutine for particle updating
     glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &config.updateParticles);
 
+    shader->setSampler2D("ParticleTexture", 0);
+    shader->setFloat("ParticleLifetime", 3.5f);
+    shader->setVec3("Accel", glm::vec3(0.0f, -0.4f, 0.0f));
+    shader->setFloat("Time", config.Time);
+    shader->setFloat("H", config.H);
+	
 	//Disable rendering
 	glEnable(GL_RASTERIZER_DISCARD);
 
@@ -324,9 +324,9 @@ void drawObjects()
 
 	//Draw points from input buffer with transform feedback
     glBeginTransformFeedback(GL_POINTS);
-	glBindVertexArray(config.particleArray[1 - config.drawBuf]);
-	glDrawArrays(GL_POINTS, 0, config.particleCount);
-	glEndTransformFeedback();
+    glBindVertexArray(config.particleArray[1 - config.drawBuf]);
+    glDrawArrays(GL_POINTS, 0, config.particleCount);
+    glEndTransformFeedback();
 
 	//Enable rendering
 	glDisable(GL_RASTERIZER_DISCARD);
