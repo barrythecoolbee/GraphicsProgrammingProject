@@ -44,7 +44,7 @@ bool isPaused = false; // stop camera movement when GUI is open
 //-----------------------------------------------------------------------------------------------------------------------------------------
 struct Config
 {
-    GLuint particleCount = 4000;
+    GLuint particleCount = 1000;
 
     GLuint initVel;
 
@@ -61,6 +61,8 @@ struct Config
     float Time = 0.0f;
     float H = 0.0f;
     float ParticleLifeTime;
+    float MinParticleSize;
+    float MaxParticleSize;
 } config;
 
 
@@ -86,7 +88,7 @@ int main()
 
     // glfw window creation
     // --------------------
-    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Fountain", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "Smoke", NULL, NULL);
     if (window == NULL)
     {
         std::cout << "Failed to create GLFW window" << std::endl;
@@ -109,7 +111,7 @@ int main()
         return -1;
     }
 	
-    fountainShader = new Shader("shaders/TF_fountain.vert", "shaders/TF_fountain.frag");
+    fountainShader = new Shader("shaders/smoke.vert", "shaders/smoke.frag");
     shader = fountainShader;   
 	
     const char* outputNames[] = { "Position", "Velocity", "StartTime" };
@@ -120,14 +122,15 @@ int main()
     config.updateParticles = glGetSubroutineIndex(shader->ID, GL_VERTEX_SHADER, "update");
 	
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-
-    // Set the point size
+	
+	//Ignores glPointSize
+    glEnable(GL_PROGRAM_POINT_SIZE);
     glPointSize(10.0f);
     // Enable blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    const char *textureName = "water/bluewater.png";
+    const char *textureName = "smoke/smoke.png";
     glActiveTexture(GL_TEXTURE0);
     loadTexture(textureName);
 	
@@ -208,14 +211,14 @@ void initParticlesBuffer() {
     for (int i = 0; i < config.particleCount; i++) {
 
         //pick the direction of the velocity
-        theta = glm::mix(0.0f, glm::pi<float>() / 6.0f, randFloat());
+        theta = glm::mix(0.0f, glm::pi<float>() / 1.5f, randFloat());
         phi = glm::mix(0.0f, glm::two_pi<float>(), randFloat());
 
         v.x = sinf(theta) * cosf(phi);
         v.y = cosf(theta);
         v.z = sinf(theta) * sinf(phi);
 
-        velocity = glm::mix(1.25f, 1.5f, randFloat());
+        velocity = glm::mix(0.1f, 0.2f, randFloat());
         v = glm::normalize(v) * velocity;
 
         data[i * 3] = v.x;
@@ -232,7 +235,7 @@ void initParticlesBuffer() {
 	//fill the first start time buffer
     delete[] data;
 	data = new GLfloat[config.particleCount];
-	float time = 0.0f, rate = 0.001f;
+	float time = 0.0f, rate = 0.01;
 	
 	for(int i = 0; i < config.particleCount; i++) {
 		data[i] = time;
@@ -311,8 +314,10 @@ void drawObjects()
     glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &config.updateParticles);
 
     shader->setSampler2D("ParticleTexture", 0);
-    shader->setFloat("ParticleLifetime", 3.5f);
-    shader->setVec3("Accel", glm::vec3(0.0f, -0.6f, 0.0f));
+    shader->setFloat("ParticleLifetime", 6.0f);
+    shader->setFloat("MinParticleSize", 10.0f);
+    shader->setFloat("MaxParticleSize", 200.0f);
+    shader->setVec3("Accel", glm::vec3(0.0f, 0.1f, 0.0f));
     shader->setFloat("Time", config.Time);
     shader->setFloat("H", config.H);
 	
