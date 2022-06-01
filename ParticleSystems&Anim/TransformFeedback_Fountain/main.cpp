@@ -60,7 +60,13 @@ struct Config
 
     float Time = 0.0f;
     float H = 0.0f;
-    float ParticleLifeTime;
+    float ParticleLifeTime = 3.5f;
+	glm::vec3 acceleration = glm::vec3(0.0f, -0.6f, 0.0f);
+	
+    float particleSize = 10.0f;
+    float rate = 0.001f;
+	
+    const char* textureName = "water/bluewater.png";
 } config;
 
 
@@ -122,14 +128,13 @@ int main()
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
     // Set the point size
-    glPointSize(10.0f);
+    glPointSize(config.particleSize);
     // Enable blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    const char *textureName = "water/bluewater.png";
+    
     glActiveTexture(GL_TEXTURE0);
-    loadTexture(textureName);
+    loadTexture(config.textureName);
 	
     initParticlesBuffer();
     
@@ -232,7 +237,7 @@ void initParticlesBuffer() {
 	//fill the first start time buffer
     delete[] data;
 	data = new GLfloat[config.particleCount];
-	float time = 0.0f, rate = 0.001f;
+	float time = 0.0f, rate = config.rate;
 	
 	for(int i = 0; i < config.particleCount; i++) {
 		data[i] = time;
@@ -311,8 +316,8 @@ void drawObjects()
     glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &config.updateParticles);
 
     shader->setSampler2D("ParticleTexture", 0);
-    shader->setFloat("ParticleLifetime", 3.5f);
-    shader->setVec3("Accel", glm::vec3(0.0f, -0.6f, 0.0f));
+    shader->setFloat("ParticleLifetime", config.ParticleLifeTime);
+    shader->setVec3("Accel", config.acceleration);
     shader->setFloat("Time", config.Time);
     shader->setFloat("H", config.H);
 	
@@ -336,8 +341,8 @@ void drawObjects()
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	// camera parameters
-    glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
-    glm::mat4 view = glm::lookAt(glm::vec3(3.0f * cos(glm::half_pi<float>()), 1.5f, 3.0f * sin(glm::half_pi<float>())), glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera.GetViewMatrix();
     glm::mat4 model = glm::mat4(1.0f);
 
     glm::mat4 mv = view * model;

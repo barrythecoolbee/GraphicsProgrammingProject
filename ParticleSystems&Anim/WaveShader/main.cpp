@@ -141,8 +141,8 @@ int main()
 void drawObjects() {
 
     // camera parameters
-    glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
-    glm::mat4 view = glm::lookAt(glm::vec3(3.0f * cos(glm::half_pi<float>()), 1.5f, 3.0f * sin(glm::half_pi<float>())), glm::vec3(0.0f, 1.5f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
+    glm::mat4 view = camera.GetViewMatrix();
     glm::mat4 model = glm::mat4(1.0);
 	glm::mat4 mv = view * model;
 	glm::mat4 mvp = projection * view * model;
