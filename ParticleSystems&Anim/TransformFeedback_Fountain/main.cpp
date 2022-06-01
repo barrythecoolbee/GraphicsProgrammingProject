@@ -312,7 +312,7 @@ void drawObjects()
 
     shader->setSampler2D("ParticleTexture", 0);
     shader->setFloat("ParticleLifetime", 3.5f);
-    shader->setVec3("Accel", glm::vec3(0.0f, -0.4f, 0.0f));
+    shader->setVec3("Accel", glm::vec3(0.0f, -0.6f, 0.0f));
     shader->setFloat("Time", config.Time);
     shader->setFloat("H", config.H);
 	
