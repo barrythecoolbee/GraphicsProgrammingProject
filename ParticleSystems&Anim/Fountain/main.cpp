@@ -57,6 +57,7 @@ struct Config
 void drawObjects();
 void initParticlesBuffer();
 static GLuint loadTexture(const std::string& fName);
+void drawGui();
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------MAIN------------------------------------------------------------------
@@ -116,6 +117,17 @@ int main()
     loadTexture(textureName);
 		
     initParticlesBuffer();
+
+    // Dear IMGUI init
+    // ---------------
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    // Setup Platform/Renderer bindings
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 440 core");
+
     // render loop
     // -----------
     while (!glfwWindowShouldClose(window))
@@ -133,9 +145,19 @@ int main()
 		
         drawObjects();
 
+        if (isPaused) {
+            drawGui();
+        }
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+
+    // Cleanup
+    // -------
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 	
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
@@ -270,6 +292,34 @@ GLuint loadTexture(const std::string& fName) {
     }
 
     return textureID;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------GUI-------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
+void drawGui() {
+
+    // Start the Dear ImGui frame
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    {
+        ImGui::Begin("Settings");
+
+        ImGui::Text("Fountain: ");
+        ImGui::SliderFloat("Particle Lifetime", &config.ParticleLifeTime, 2.0f, 4.0f);
+        ImGui::SliderFloat("Gravity", (float*)&config.Gravity.y, -2.0f, 2.0f);
+        ImGui::Separator();
+
+        
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::End();
+    }
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------

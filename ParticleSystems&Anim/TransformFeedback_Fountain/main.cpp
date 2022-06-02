@@ -48,19 +48,19 @@ struct Config
 
     GLuint initVel;
 
-    GLuint feedback[2];
-    GLuint posBuf[2];
-	GLuint velBuf[2];
-    GLuint startTime[2];
-    GLuint particleArray[2];
+    GLuint feedback[2]; //Transform feedback objects
+    GLuint posBuf[2]; //Position buffers (A and B)
+	GLuint velBuf[2]; // Velocity buffers (A and B)
+    GLuint startTime[2]; // Start time buffers (A and B)
+    GLuint particleArray[2]; //Buffer A and B
 
     GLuint updateParticles;
-    GLuint drawBuf = 1;
+    GLuint drawBuf = 1; //Current buffer
     GLuint renderParticles;
 
-    float Time = 0.0f;
-    float H = 0.0f;
-    float ParticleLifeTime = 3.5f;
+    float Time = 0.0f; //Animation time
+    float H = 0.0f; //Time step
+    float ParticleLifeTime = 3.5f; //Length of time before being recycled
 	glm::vec3 acceleration = glm::vec3(0.0f, -0.6f, 0.0f);
 	
     float particleSize = 10.0f;
@@ -73,6 +73,7 @@ struct Config
 void drawObjects();
 void initParticlesBuffer();
 static GLuint loadTexture(const std::string& fName);
+void drawGui();
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------MAIN------------------------------------------------------------------
@@ -118,8 +119,9 @@ int main()
     fountainShader = new Shader("shaders/TF_fountain.vert", "shaders/TF_fountain.frag");
     shader = fountainShader;   
 	
-    const char* outputNames[] = { "Position", "Velocity", "StartTime" };
-    glTransformFeedbackVaryings(shader->ID, 3, outputNames, GL_SEPARATE_ATTRIBS);
+	//Connection between vertex shader output variables and output buffers
+    //const char* outputNames[] = { "Position", "Velocity", "StartTime" };
+    //glTransformFeedbackVaryings(shader->ID, 3, outputNames, GL_SEPARATE_ATTRIBS);
 
     // get subroutine indices
     config.renderParticles = glGetSubroutineIndex(shader->ID, GL_VERTEX_SHADER, "render");
@@ -137,6 +139,16 @@ int main()
     loadTexture(config.textureName);
 	
     initParticlesBuffer();
+
+    // Dear IMGUI init
+    // ---------------
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    // Setup Platform/Renderer bindings
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 440 core");
     
     // render loop
     // -----------   
@@ -156,9 +168,19 @@ int main()
         
         drawObjects();
 
+        if (isPaused) {
+            drawGui();
+        }
+
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
+	
+    // Cleanup
+    // -------
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 	
     // glfw: terminate, clearing all previously allocated GLFW resources.
     // ------------------------------------------------------------------
@@ -175,27 +197,27 @@ float randFloat() {
 
 void initParticlesBuffer() {
 	
-	// Generate the buffers
+	// Generate the buffers (Create)
 	glGenBuffers(2, config.posBuf);
 	glGenBuffers(2, config.velBuf);
 	glGenBuffers(2, config.startTime);
 	glGenBuffers(1, &config.initVel);
 
-	// Initialize the buffers
+	// Initialize the buffers (Allocate)
 	int size = config.particleCount * 3 * sizeof(float);
 	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[0]); //buffer A
 	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
 	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[1]); //buffer B
 	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
-	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[0]);
+	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[0]); //buffer A
 	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
-	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[1]);
+	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[1]); //buffer B
 	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_COPY);
 	glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
 	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_STATIC_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[0]);
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[0]); //buffer A
 	glBufferData(GL_ARRAY_BUFFER, config.particleCount * sizeof(float), NULL, GL_DYNAMIC_COPY);
-	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[1]);
+	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[1]); //buffer B
 	glBufferData(GL_ARRAY_BUFFER, config.particleCount * sizeof(float), NULL, GL_DYNAMIC_COPY);
 	
 	//Fill the first position buffer with zeros
@@ -253,38 +275,48 @@ void initParticlesBuffer() {
 	//create vertex arrays for each set of buffers
 	glGenVertexArrays(2, config.particleArray);
 	
-	//Set up particle array 0
+	//Buffer A
 	glBindVertexArray(config.particleArray[0]);
+	
+	//Buffer A position with the first vertex attribute (index 0) vec3
 	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[0]);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(0);
 
+    //Buffer A velocity with the second vertex attribute (index 1) vec3
 	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[0]);
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(1);
 
+    //Buffer A start time with the third vertex attribute (index 2) float
 	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[0]);
 	glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(2);
 	
+	//index 3 vec3
     glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, NULL);
     glEnableVertexAttribArray(3);
 
-	//Set up particle array 1
+    //Buffer B
 	glBindVertexArray(config.particleArray[1]);
+	
+    //Buffer B position with the first vertex attribute (index 0) vec3
 	glBindBuffer(GL_ARRAY_BUFFER, config.posBuf[1]);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(0);
 
+    //Buffer B velocity with the second vertex attribute (index 1) vec3
 	glBindBuffer(GL_ARRAY_BUFFER, config.velBuf[1]);
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(1);
 	
+    //Buffer B start time with the third vertex attribute (index 2) float
 	glBindBuffer(GL_ARRAY_BUFFER, config.startTime[1]);
 	glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(2);
 	
+    //index 3 vec3
 	glBindBuffer(GL_ARRAY_BUFFER, config.initVel);
 	glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 0, NULL);
 	glEnableVertexAttribArray(3);
@@ -296,6 +328,8 @@ void initParticlesBuffer() {
 
     //Transform feedback 0
     glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, config.feedback[0]);
+	//Bind the buffer to the indexed binding points -> they can be reset quickly later
+	//The index corresponds to the index of the vertex shader's output varible defined in the layout qualifier
     glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, config.posBuf[0]);
     glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 1, config.velBuf[0]);
     glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 2, config.startTime[0]);
@@ -324,13 +358,15 @@ void drawObjects()
 	//Disable rendering
 	glEnable(GL_RASTERIZER_DISCARD);
 
-	//Bind the feedback obj. for the buffers to be drawn
+	//Bind the appropriate buffers to the transform feedback binding points
 	glBindTransformFeedback(GL_TRANSFORM_FEEDBACK, config.feedback[config.drawBuf]);
 
-	//Draw points from input buffer with transform feedback
+	//Enable transform feedback
     glBeginTransformFeedback(GL_POINTS);
+	//Draw point primitives from buffer (A or B)
     glBindVertexArray(config.particleArray[1 - config.drawBuf]);
     glDrawArrays(GL_POINTS, 0, config.particleCount);
+	//Disable transform feedback
     glEndTransformFeedback();
 
 	//Enable rendering
@@ -384,6 +420,36 @@ GLuint loadTexture(const std::string& fName) {
     }
 
     return textureID;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------GUI-------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------
+void drawGui() {
+
+    // Start the Dear ImGui frame
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    {
+        ImGui::Begin("Settings");
+
+        ImGui::Text("Fountain: ");
+        ImGui::SliderFloat("Particle Lifetime", &config.ParticleLifeTime, 2.0f, 4.0f);
+        ImGui::SliderFloat("AccelerationX", (float*)&config.acceleration.x, -2.0f, 2.0f);
+        ImGui::SliderFloat("AccelerationY", (float*)&config.acceleration.y, -2.0f, 2.0f);
+        ImGui::SliderFloat("AccelerationZ", (float*)&config.acceleration.z, -2.0f, 2.0f);
+        ImGui::Separator();
+
+        
+        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::End();
+    }
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
