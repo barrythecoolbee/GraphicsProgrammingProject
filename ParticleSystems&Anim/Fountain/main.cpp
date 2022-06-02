@@ -49,8 +49,8 @@ struct Config
     GLuint initVel, startTime, particles;
 
     float Time = 0.0f;
-	glm::vec3 Gravity;
-    float ParticleLifeTime;
+	glm::vec3 Gravity = glm::vec3(0.0f, -0.3f, 0.0f);
+    float ParticleLifeTime = 3.5f;
 } config;
 
 
@@ -248,8 +248,8 @@ void drawObjects()
 	
     shader->setFloat("Time", config.Time);
     shader->setSampler2D("ParticleTexture", 0);
-    shader->setFloat("ParticleLifetime", 3.5f);
-    shader->setVec3("Gravity", glm::vec3(0.0f, -0.3f, 0.0f));
+    shader->setFloat("ParticleLifetime", config.ParticleLifeTime);
+    shader->setVec3("Gravity", config.Gravity);
 	
     // camera parameters
     glm::mat4 projection = glm::perspective(glm::radians(60.0f), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.3f, 100.0f);
