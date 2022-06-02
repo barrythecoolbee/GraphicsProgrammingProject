@@ -72,7 +72,6 @@ struct Config
 
 void drawObjects();
 void initParticlesBuffer();
-static GLuint loadTexture(const std::string& fName);
 void drawGui();
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
@@ -118,10 +117,6 @@ int main()
 	
     fountainShader = new Shader("shaders/TF_fountain.vert", "shaders/TF_fountain.frag");
     shader = fountainShader;   
-	
-	//Connection between vertex shader output variables and output buffers
-    //const char* outputNames[] = { "Position", "Velocity", "StartTime" };
-    //glTransformFeedbackVaryings(shader->ID, 3, outputNames, GL_SEPARATE_ATTRIBS);
 
     // get subroutine indices
     config.renderParticles = glGetSubroutineIndex(shader->ID, GL_VERTEX_SHADER, "render");
@@ -390,36 +385,6 @@ void drawObjects()
 
 	//Swap buffers
 	config.drawBuf = 1 - config.drawBuf;
-}
-
-GLuint loadTexture(const std::string& fName) {
-    string filename = fName;
-
-    unsigned int textureID;
-    glGenTextures(1, &textureID);
-
-    int width, height, nrComponents;
-    unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
-    if (data)
-    {
-        glBindTexture(GL_TEXTURE_2D, textureID);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        stbi_image_free(data);
-    }
-    else
-    {
-        std::cout << "Texture failed to load at path: " << fName << std::endl;
-        stbi_image_free(data);
-    }
-
-    return textureID;
 }
 
 //-----------------------------------------------------------------------------------------------------------------------------------------
